@@ -222,7 +222,7 @@ def bkg_subtraction(S, L_n=41, sigma=150, power=1, p=1000, edge_width=5, edge_we
     s = sigma/(x[-1]-x[0])
     x = (x-x[0])/(x[-1]-x[0])
     X = np.zeros((len(x),p))
-    for i in enumerate(np.linspace(0,1,p)):
+    for i in enumerate(np.linspace(0-2*s,1+2*s,p)):
         X[:, i[0]] = (np.exp(-(x-i[1])**(2)/(2*s**2)))**power #generative function
 
     # vector C

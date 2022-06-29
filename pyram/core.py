@@ -206,7 +206,7 @@ def interpol(S):
 from scipy.signal import savgol_filter
 from scipy.optimize import linprog
 
-def bkg_subtraction(S, L_n=41, sigma=150, power=1, p=1000, edge_width=5, edge_weight=2, plot=False, return_bkg=False):
+def bkg_subtraction(S, L_n=41, sigma=150, n=1, p=1000, edge_width=5, edge_weight=2, plot=False, return_bkg=False):
 
     #type2spectra
     S = type2spectra(S)
@@ -214,7 +214,7 @@ def bkg_subtraction(S, L_n=41, sigma=150, power=1, p=1000, edge_width=5, edge_we
 
     # smoothing
     S_smooth = S.copy()
-    S_smooth[1]=savgol_filter(S[1],L_n,2)
+    S_smooth[1]=savgol_filter(S[1],L_n,n)
 
     # vector/matrice Y and X
     Y = S_smooth[1]
@@ -223,7 +223,7 @@ def bkg_subtraction(S, L_n=41, sigma=150, power=1, p=1000, edge_width=5, edge_we
     x = (x-x[0])/(x[-1]-x[0])
     X = np.zeros((len(x),p))
     for i in enumerate(np.linspace(0-2*s,1+2*s,p)):
-        X[:, i[0]] = (np.exp(-(x-i[1])**(2)/(2*s**2)))**power #generative function
+        X[:, i[0]] = (np.exp(-(x-i[1])**(2)/(2*s**2))) #generative function
 
     # vector C
     H = np.concatenate((np.ones(edge_width)*edge_weight, np.ones(X.shape[0]-2*edge_width), np.ones(edge_width)*edge_weight))
@@ -252,7 +252,7 @@ def bkg_subtraction(S, L_n=41, sigma=150, power=1, p=1000, edge_width=5, edge_we
         plt.plot(S[0],S[1], label='Original signal')
         plt.plot(S_smooth[0],S_smooth[1], label='Smoothed signal')
         XX = np.arange(200,1000)
-        plt.plot(XX, S[1,100]/2*(np.exp(-(XX-600)**(2)/(2*sigma**2)))**power,label='Kernel function')
+        plt.plot(XX, S[1,100]/2*(np.exp(-(XX-600)**(2)/(2*sigma**2))),label='Kernel function')
         plt.legend()
         plt.show(block=False)
     
@@ -366,7 +366,7 @@ def preprocessing(P, pre=False):
 
 
 sch_alias = 'Run search(...) to generate an alias dictionary of the library spectra in the current position'
-def search(S, shift=5, first=10, pre=False):
+def search(S, shift=5, first=10, pre=False, verbose=True):
     S = interpol(S)
     S =preprocessing(S,pre)
     match=[]
@@ -385,8 +385,9 @@ def search(S, shift=5, first=10, pre=False):
     sch_alias = ['sch'+str(j) for j in range(len(match.name))]
     sch_alias = dict(zip(sch_alias,match.name))
     match.insert(0, 'alias', list(sch_alias.keys()))
-    print(match.head(first))
-    return
+    if verbose:
+        print(match.head(first))
+    return match
 
 
 

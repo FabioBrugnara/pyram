@@ -195,7 +195,7 @@ def replot(S, norm=True):
 ###################################################################
 
 def interpol(S):
-    min = int(S[0][0]) if S[0][0]==0 else int(S[0][0]) +1
+    min = int(S[0][0]) if (S[0][0]-int(S[0][0]))==0 else int(S[0][0]) +1
     max = int(S[0][-1])
     X = np.arange(min,max+1,1)
     S = np.array([X, np.interp(X,S[0],S[1])])

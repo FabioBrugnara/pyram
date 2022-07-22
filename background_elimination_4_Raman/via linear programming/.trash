@@ -1,0 +1,37 @@
+def bkg_fit(p, S_smooth):
+    Y = S_smooth[1]
+    x = S_smooth[0]
+    x = (x-x[0])/(x[-1]-x[0])
+    X = np.zeros((len(x),p))
+    for i in range(p):
+        X[:, i] = x**i
+
+    edge_width = 25
+    edge_weight = 3
+    H = np.concatenate((np.ones(edge_width)*edge_weight, np.ones(X.shape[0]-2*edge_width), np.ones(edge_width)*edge_weight))
+    C = - np.dot(H,X)
+
+    res = linprog(C, A_ub=X, b_ub = Y, bounds = (None, None), method='highs-ds')
+
+    W = res['x']
+    return W, X, res['status']
+
+f = lambda y, yth: 2/(1+np.exp(-2*y/yth))-1
+
+def e(S_smooth, p, alpha):
+    W,X,stat = bkg_fit(p, S_smooth)
+    if stat !=0:
+        print('Fit do not converged')
+        return
+
+    yth = np.max(S_smooth[1]-np.dot(X,W)) * alpha
+    return f(S_smooth[1]-np.dot(X,W),yth)
+
+
+fitD = []
+P = list(range(2,15))
+for p in P:
+    print(p)
+    t=e(S_smooth, p, alpha=0.4)
+    fitD.append( t.sum()/t[t<0.9].sum() )
+plt.scatter(P,fitD)

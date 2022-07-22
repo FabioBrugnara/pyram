@@ -8,7 +8,9 @@ import scipy
 
 from sklearn.linear_model import LinearRegression
 from itertools import combinations
-from itertools import product
+
+from scipy.signal import savgol_filter
+from scipy.optimize import linprog
 
 ##################################################################
 ######################## GLOBAL VARIABLES ########################
@@ -207,10 +209,7 @@ def interpol(S):
 #################################################################
 
 
-from scipy.signal import savgol_filter
-from scipy.optimize import linprog
-
-def bkg_subtraction(S, L_n=41, sigma=150, n=1, p=1000, edge_width=5, edge_weight=2, plot=False, return_bkg=False):
+def bkg_subtraction(S, L_n=31, sigma=150, p=100, edge_width=5, edge_weight=5, plot=False, return_bkg=False):
 
     #type2spectra
     S = type2spectra(S)
@@ -218,28 +217,25 @@ def bkg_subtraction(S, L_n=41, sigma=150, n=1, p=1000, edge_width=5, edge_weight
 
     # smoothing
     S_smooth = S.copy()
-    S_smooth[1]=savgol_filter(S[1],L_n,n)
+    S_smooth[1]=savgol_filter(S[1],L_n,1)
 
-    # vector/matrice Y and X
-    Y = S_smooth[1]
-    x = S_smooth[0]
-    s = sigma/(x[-1]-x[0])
-    x = (x-x[0])/(x[-1]-x[0])
-    X = np.zeros((len(x),p))
-    for i in enumerate(np.linspace(0-2*s,1+2*s,p)):
-        X[:, i[0]] = (np.exp(-(x-i[1])**(2)/(2*s**2))) #generative function
-
+    # matrice X
+    X = np.zeros((len(S_smooth[0]),p))
+    for i in enumerate(np.linspace(S_smooth[0,0]-sigma,S_smooth[0,-1]+sigma,p)):
+       X[:, i[0]] = 1/(np.sqrt(2*np.pi)*sigma)*np.exp(-(S_smooth[0]-i[1])**(2)/(2*sigma**2))
+   
     # vector C
     H = np.concatenate((np.ones(edge_width)*edge_weight, np.ones(X.shape[0]-2*edge_width), np.ones(edge_width)*edge_weight))
     C = - np.dot(H,X)
 
     # solving the linear programming problem
-    res = linprog(C, A_ub=X, b_ub = Y,bounds = (0, None), method='highs-ds')
+    res = linprog(C, A_ub=X, b_ub = S_smooth[1], bounds = (0, None), method='highs-ds')
     W = res['x']
     status = res['status'] # status = 0 means OK
     print('sum(Y-XW) = ', res['fun'])
     print('message = ', res['message'])
     print('# of iter = ', res['nit'])
+
 
     if status!=0:
         print('Fit failed !!!')

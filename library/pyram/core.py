@@ -12,6 +12,7 @@ from itertools import combinations
 from scipy.signal import savgol_filter
 from scipy.optimize import linprog
 from scipy.spatial import distance
+from scipy.optimize import minimize
 
 ##################################################################
 ######################## GLOBAL VARIABLES ########################
@@ -638,15 +639,15 @@ def NDsearch(S, shift, set_min=None, set_max=None, th=0.01, improvement_th = 0.1
                 match[c[0]] = [c[1], np.dot(S_work[1],tot) / np.sqrt(np.dot(S_work[1],S_work[1])*np.dot(tot,tot)) ]
 
         # decode results
-
         for i in range(len(match)):
             temp = [0]*N
             for j in range(N):
                 temp[j]= sumup.name[match[i][0][j]]
 
+            match[i].append(match[i][0])
             match[i][0] = temp
 
-        match = pd.DataFrame(match, columns=['combination','match'])
+        match = pd.DataFrame(match, columns=['combination','match','ID'])
 
 
         match.sort_values(by=['match'], inplace=True, ascending=False)
@@ -662,3 +663,25 @@ def NDsearch(S, shift, set_min=None, set_max=None, th=0.01, improvement_th = 0.1
     print('best at N =', N-1)
     print(out[N-2].head(10))
     print('########################################################')
+
+    IDs = list(out[N-2].iloc[0].ID)
+    Names = list(out[N-2].iloc[0].combination)
+
+    def f(C):
+        tot = np.sum(pure.take(IDs,axis=0).transpose()*C,axis=1)
+        #return -np.dot(S_work[1],tot) / np.sqrt(np.dot(S_work[1],S_work[1])*np.dot(tot,tot))
+        return np.sum((tot-S_work[1])**2)
+
+    C = minimize(f,np.ones(len(IDs)))['x']
+
+    plt.figure(figsize=(10,5))
+    plt.xlabel(r'Raman shift [$cm^{-1}$]')
+    plt.ylabel('Intensity [a.u.]')
+
+    plt.plot(S_work[0],S_work[1],label='signal')
+    for i in enumerate(IDs):
+        plt.plot(wn,pure[i[1]]*C[i[0]], label=Names[i[0]])
+
+    plt.legend()
+
+    return out[N-2].head(10)

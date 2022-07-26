@@ -11,6 +11,7 @@ from itertools import combinations
 
 from scipy.signal import savgol_filter
 from scipy.optimize import linprog
+from scipy.spatial import distance
 
 ##################################################################
 ######################## GLOBAL VARIABLES ########################
@@ -440,137 +441,157 @@ print('Welcome to pyram: your Raman analysis library!')
 ######################## ND SEARCH ########################
 ###################################################################
 
+def ND_cos_sim(S,X):
 
-def NDsearch(S, shift, th=0.01, improvement_th = 0.1, verbose=False):
-    
-    ##########################################################
-    ########### PUTTING THE LIBRARY IN AN NP.ARRAY ###########
-    ##########################################################ù
+    if X.shape[0]>1:
+        # riempio la matrice X
+        X = X.transpose()
 
-    global LIB_generation 
-    LIB_generation= True
-    if LIB_generation:
+        # calcolo la trasposta
+        Xt = X.transpose()
 
-        # the nan values are padded with zeros!
+        # calcolo la proiezione
+        w = np.linalg.multi_dot([X ,np.linalg.inv( np.dot(Xt,X) ), Xt, S[1]])
 
-        m = len(lib_names)
+        # e infine la cosine similarity
+        match = 1-distance.cosine(w,S[1])
 
-        # searching the minimum and the maximum wn of the library (to get the # of columns)
-        min = lib[lib_names[0]][0].min()
-        max = lib[lib_names[0]][0].max()
+    if X.shape[0]==1:
+        match = 1-distance.cosine(LIB[el],S[1])
 
-        for el in lib_names[1:]:
-            min_t = lib[el][0].min()
-            max_t = lib[el][0].max()
+    return match
 
-            if min_t<min:
-                min = min_t
-            if max_t>max:
-                max = max_t
 
-        wn = np.arange(min,max+1,1)
-        n = len(wn)
+def NDsearch(S, shift, set_min=None, set_max=None, th=0.01, improvement_th = 0.1, bin=5, verbose=False):
 
-        # rewriting the library in a np.array
-        LIB = np.zeros((m,n))
+    ###################################################################################
+    ########### PUTTING THE LIBRARY IN AN NP.ARRAY with the computed shifts ###########
+    ###################################################################################
 
-        for i in range(len(lib_names)):
-            min_t = lib[lib_names[i]][0].min()
-            max_t = lib[lib_names[i]][0].max()
-            
-            LIB[i][int(min_t-min):n-int(max-max_t)]  = lib[lib_names[i]][1]
+    # the nan values are padded with zeros!
+    m = len(lib_names)
 
-        # rescaling the height to 1
-        LIB = (LIB.transpose()/LIB.max(axis=1)).transpose()
+    # searching the minimum and the maximum wn of the library (to get the # of columns)
+    min = lib[lib_names[0]][0].min()
+    max = lib[lib_names[0]][0].max()
 
-        LIB_generation = False
+    for el in lib_names[1:]:
+        min_t = lib[el][0].min()
+        max_t = lib[el][0].max()
 
-    ###########################################################################################################
-    ############# GENERATING A LIBRARY OF THE SHIFTED SPECTRA, SPECIFYING FOR THE S WE ARE FACING #############
-    ###########################################################################################################
+        if min_t<min:
+            min = min_t
+        if max_t>max:
+            max = max_t
+
+    wn = np.arange(min-shift,max+1+shift,1)
+    n = len(wn+2*shift)
+
+    # rewriting the library in a np.array
+    LIB = np.zeros((m,n))
+
+    for i in range(len(lib_names)):
+        min_t = lib[lib_names[i]][0].min()
+        max_t = lib[lib_names[i]][0].max()
+        
+        # computing the shift
+        match = 0
+        for s in np.arange(-shift,shift+1):
+            B_temp = lib[lib_names[i]].copy()
+            B_temp[0] += s
+
+            match_new = cos_sim(S,B_temp)                                    
+            if match_new>match:
+                match = match_new
+                out = s
+
+        #adding the shifted spectra to the library
+        LIB[i][int(min_t-min+shift)+out:n-int(max-max_t+shift)+out]  = lib[lib_names[i]][1]
+
+    # rescaling the height to 1
+    LIB = (LIB.transpose()/LIB.max(axis=1)).transpose()
+
+
+    ###############################################################################################
+    ############# CHANGING LIBRARY OF THE SPECTRA, SPECIFYING FOR THE S WE ARE FACING #############
+    ###############################################################################################
 
     # here we prepare common wn between S and the library
 
     # ausiliar variables
-    LIB_temp = copy.deepcopy(LIB)
-    S_temp = copy.deepcopy(S)
-    S_temp[1] = S_temp[1]/S_temp[1].max()
-    wn_temp = copy.deepcopy(wn)
+    S_work = copy.deepcopy(S)
+    S_work[1] = S_work[1]/S_work[1].max()
 
-    # changing dimensions of LIB_temp or S_temp
-    min_1 = np.min(S_temp[0])
-    min_2 = np.min(wn_temp)
+    # changing dimensions of LIB_temp or S_work
+    min_1 = np.min(S_work[0])
+    min_2 = np.min(wn)
+    max_1 = np.max(S_work[0])
+    max_2 = np.max(wn)
 
-    if min_1<min_2:
-        S_temp = S_temp[int(min_2-min_1):]
-    if min_2<min_1:
-        wn_temp = wn_temp[int(min_1-min_2):]
-        LIB_temp = LIB_temp[:,int(min_1-min_2):]
+    # se set_min o set_max sono settati male sistemali
+    set_min = np.max([min_1,set_min])
+    set_max = np.min([max_1,set_max])
 
-    max_1 = np.max(S_temp[0])
-    max_2 = np.max(wn_temp)
+    if set_min==None: #i.e se non è settato un minimo settalo come quello comune
+        min = np.max([min_1,min_2])
+    else:
+        min = set_min
+    if set_max==None: #i.e se non è settato un massimo settalo come quello comune
+        max = np.min([max_1,max_2])
+    else:
+        max = set_max
 
-    if max_1>max_2:
-        S_temp = S_temp[:,:int(max_2-max_1)]
-    if max_2>max_1:
-        wn_temp = wn_temp[:int(max_1-max_2)]
-        LIB_temp = LIB_temp[:,:int(max_1-max_2)]
+    if min_1<min:
+        S_work = S_work[:,int(min-min_1):]
+    if min_2<min:
+        wn = wn[int(min-min_2):]
+        LIB = LIB[:,int(min-min_2):]
+    if max_1>max:
+        S_work = S_work[:,:int(max-max_1)]
+    if max_2>max:
+        wn = wn[:int(max-max_2)]
+        LIB = LIB[:,:int(max-max_2)]
 
-    # generate shifted spectra in LIB_temp
-    shift_vec = np.arange(-shift,shift+1)
-
-    LIB_temp_shifted = np.zeros((LIB_temp.shape[0]*len(shift_vec),LIB_temp.shape[1]))
-
-    for i in range(len(shift_vec)):
-        if shift_vec[i]>0:
-            LIB_temp_shifted[i*LIB_temp.shape[0]:(i+1)*LIB_temp.shape[0],int(shift_vec[i]):] = LIB_temp[:,:-int(shift_vec[i])]
-        if shift_vec[i]<0:
-            LIB_temp_shifted[i*LIB_temp.shape[0]:(i+1)*LIB_temp.shape[0],:int(shift_vec[i])] = LIB_temp[:,-int(shift_vec[i]):]
-        if shift_vec[i]==0:
-            LIB_temp_shifted[i*LIB_temp.shape[0]:(i+1)*LIB_temp.shape[0],:] = LIB_temp[:,:]
-
-    LIB_temp = LIB_temp_shifted
-    del LIB_temp_shifted
 
     #############################################################################################
     ############# LINEAR REGRESSION FOR THE SEARCH OF USEFUL SPECTRA IN THE LIBRARY #############
     #############################################################################################
     
+    # binning for the speed up of the linear regression
+    LIB_temp = LIB[:,:(LIB.shape[1] // bin)*bin].reshape(LIB.shape[0],LIB.shape[1]//bin,bin).mean(axis=2)
+    wn_temp = wn[:(wn.shape[0] // bin)*bin].reshape(wn.shape[0]//bin,bin).mean(axis=1)
+    S_temp = S_work[:,:(S_work.shape[1] // bin)*bin].reshape(S_work.shape[0],S_work.shape[1]//bin,bin).mean(axis=2)
+
     # linear regression
     reg = LinearRegression(fit_intercept=False, positive=True)
     reg.fit(LIB_temp.transpose(),S_temp[1])
 
-
-    if verbose:
-        # plot the regression
+    # plot the regression
+    if verbose==True:
+        print('Linear regression to find possible spectra in the library:')
         plt.figure(figsize=(10,5))
         plt.plot(wn_temp,np.dot(LIB_temp.transpose(),reg.coef_))
         plt.plot(S_temp[0],S_temp[1])
         plt.show()
 
-    # delete (big) LIB_temp variable
-    del LIB_temp
-
-    # number of used spectrums used, selection of rely used spectra
-    count=0
+    # number of used spectrums, selection of rely used spectra
     lib_used = []
     for i in range(len(reg.coef_)):
         if reg.coef_[i]>th:
-            count+=1
             lib_used.append(i)
 
     if verbose:
         print('################################################################')
-        print('# of used spectra = ',count)
+        print('# of used spectra = ',len(lib_used))
 
     # selected spectra sumup
     sumup = []
     for i in range(len(lib_used)):
-        sumup.append([lib_names[lib_used[i] - m*(lib_used[i]//m)] , shift_vec[lib_used[i]//m], reg.coef_[lib_used[i]]])
+        sumup.append([lib_used[i],lib_names[lib_used[i]] , reg.coef_[lib_used[i]]])
 
-    sumup = pd.DataFrame(sumup, columns=['name','shift','regression coefficient'])
-
-    if verbose:    
+    sumup = pd.DataFrame(sumup, columns=['ID','name','regression coefficient'])
+    
+    if verbose:
         print(sumup)
 
 
@@ -579,49 +600,13 @@ def NDsearch(S, shift, th=0.01, improvement_th = 0.1, verbose=False):
     #########################################################################################
 
     # generation of the required pure spectra (also shifted)
-    pure = [0] * len(sumup.index)
-    for i in sumup.index:
-        pure[i] = copy.deepcopy(lib[sumup.name[i]])
-        pure[i][0] = pure[i][0]+sumup['shift'][i]
-        pure[i][1] = pure[i][1]/pure[i][1].max()
+    pure = np.take(LIB,list(sumup.ID),axis=0)
+    pure.shape
 
 
-    # per semplicità restringiamo subito tutto allo stesse common wn
-
-        # calcolo min e max della combinazione
-
-    min = S[0].min()
-    max = S[0].max()
-
-    for el in sumup.index:
-        min_pure = pure[el][0].min()
-        max_pure = pure[el][0].max()
-
-        if min_pure>min:
-            min = min_pure
-        if max_pure<max:
-            max = max_pure
-        # e ora restringiamo
-
-            # prima S in S_temp
-    S_temp = copy.deepcopy(S)
-    S_temp[1] = S_temp[1]/S_temp[1].max()
-
-    if S_temp[0].min()<min:
-        S_temp = S_temp[:,int(min-S_temp[0].min()):]
-    if S_temp[0].max()>max:
-        S_temp = S_temp[:,:-int(S_temp[0].max()-max)]
-
-            # poi i pure spectra
-    for el in sumup.index:
-        if pure[el][0].min()<min:
-            pure[el] = pure[el][:,int(min-pure[el][0].min()):]
-        if pure[el][0].max()>max:
-            pure[el] = pure[el][:,:-int(pure[el][0].max()-max)]
-
-    #############################################################
-    ############# FINAL FIT USING COSINE SIMILARITY #############
-    #############################################################
+    ######################################
+    ############# CYCLE ON N #############
+    ######################################
 
     N = 0
     improvement = 1
@@ -630,54 +615,42 @@ def NDsearch(S, shift, th=0.01, improvement_th = 0.1, verbose=False):
     while improvement>improvement_th:
         N += 1
 
-        if N == 1:
-            print('trying N =', N)
-            match = search(S, shift, verbose=False)
-            match.drop(columns=['alias'], inplace=True)
+        # genero le N combinazioni tra i pure spectra selezionati
+        comb = list(combinations(list(sumup.index),N))
 
-        if N>1:
+        print('trying N =', N,'; resulting in', len(comb), 'combinations')
 
-            # genero le N combinazioni tra i pure spectra selezionati
-            comb = list(combinations(list(sumup.index),N))
-            # eliminare combinazioni dello stesso spettro shiftato??????
+        # and finaly let's compute the similarity for each combination
+        match = [0]*len(comb)
 
-
-            print('trying N =', N,'; resulting in', len(comb), 'combinations')
-
-            # and finaly let's compute the similarity for each combination
-            match = [0]*len(comb)
-
-            for c in enumerate(comb):
-                
+        for c in enumerate(comb):
+            
+            if N>1:
                 # minimization of the problem
-                def fun(intensity):
-                    intensity = np.concatenate(([1],intensity))
-                    tot = np.zeros(len(S_temp[1]))
-
-                    for i in range(N):
-                        tot += pure[c[1][i]][1] * intensity[i]
-                    return -np.dot(S_temp[1],tot) / np.sqrt(np.dot(S_temp[1],S_temp[1])*np.dot(tot,tot))
-
-                X = scipy.optimize.minimize(fun, [1]*(N-1), method='Nelder-Mead', bounds=[(0,100)]*(N-1))
-                if X.success==False:
-                    print('error in the optimization!!!')
+                X = pure.take(c[1],axis=0)
 
                 # store results
-                # combination, intensity, similarity
-                match[c[0]] = [c[1], X.fun ]
-                
+                # combination, similarity
+                match[c[0]] = [c[1], ND_cos_sim(S_work,X) ]
+            
+            if N==1:
+                tot = pure[c[1][0]]
+                match[c[0]] = [c[1], np.dot(S_work[1],tot) / np.sqrt(np.dot(S_work[1],S_work[1])*np.dot(tot,tot)) ]
 
-            for i in range(len(match)):
-                temp = [0]*N
-                for j in range(N):
-                    temp[j]= sumup.name[match[i][0][j]]
+        # decode results
 
-                match[i][0] = temp
-            match = pd.DataFrame(match, columns=['name','match'])
+        for i in range(len(match)):
+            temp = [0]*N
+            for j in range(N):
+                temp[j]= sumup.name[match[i][0][j]]
 
-            match['match'] = -match['match']
-            match.sort_values(by=['match'], inplace=True, ascending=False)
-            match.reset_index(inplace=True, drop=True)
+            match[i][0] = temp
+
+        match = pd.DataFrame(match, columns=['combination','match'])
+
+
+        match.sort_values(by=['match'], inplace=True, ascending=False)
+        match.reset_index(inplace=True,drop=True)
 
 
         out.append(match)
@@ -689,4 +662,3 @@ def NDsearch(S, shift, th=0.01, improvement_th = 0.1, verbose=False):
     print('best at N =', N-1)
     print(out[N-2].head(10))
     print('########################################################')
-    return out[N-2]

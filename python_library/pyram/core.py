@@ -463,7 +463,7 @@ def ND_cos_sim(S,X):
     return match
 
 
-def NDsearch(S, shift, set_min=None, set_max=None, th=0.01, improvement_th = 0.1, bin=5, verbose=False):
+def NDsearch(S, shift, set_min=None, set_max=None, improvement_th = 0.1, fixed_N=None, verbose=False, th=0.01, bin=5):
 
     ###################################################################################
     ########### PUTTING THE LIBRARY IN AN NP.ARRAY with the computed shifts ###########
@@ -604,12 +604,16 @@ def NDsearch(S, shift, set_min=None, set_max=None, th=0.01, improvement_th = 0.1
     pure = np.take(LIB,list(sumup.ID),axis=0)
     pure.shape
 
-
+   
     ######################################
     ############# CYCLE ON N #############
     ######################################
 
-    N = 0
+    if fixed_N==None:
+        N = 0
+    else:
+        N = fixed_N-1
+
     improvement = 1
     out = []
 
@@ -655,17 +659,26 @@ def NDsearch(S, shift, set_min=None, set_max=None, th=0.01, improvement_th = 0.1
 
 
         out.append(match)
-        if N>1:
+
+        if N>1 and fixed_N==None:
             improvement = (out[N-1].match.max()-out[N-2].match.max())/out[N-2].match.max()
+        if fixed_N!=None:
+            improvement = 0
+
+
+    if fixed_N==None:  
+        final_N = N-1
+        out = out[final_N-1]
         
+        print('best at N =', final_N)
 
-    print('########################################################')
-    print('best at N =', N-1)
-    print(out[N-2].head(10))
-    print('########################################################')
+    else:
+        final_N = fixed_N
+        out = out[0]
+    
 
-    IDs = list(out[N-2].iloc[0].ID)
-    Names = list(out[N-2].iloc[0].combination)
+    IDs = list(out.iloc[0].ID)
+    Names = list(out.iloc[0].combination)
 
     def f(C):
         tot = np.sum(pure.take(IDs,axis=0).transpose()*C,axis=1)
@@ -684,4 +697,4 @@ def NDsearch(S, shift, set_min=None, set_max=None, th=0.01, improvement_th = 0.1
 
     plt.legend()
 
-    return out[N-2].head(10)
+    return out.head(10).drop('ID',axis=1)

@@ -6,6 +6,8 @@ import copy
 import pandas as pd
 import scipy
 
+from PyMca5.PyMcaIO import OmnicMap
+
 from sklearn.linear_model import LinearRegression
 from itertools import combinations
 

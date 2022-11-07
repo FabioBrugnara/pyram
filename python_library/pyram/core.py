@@ -77,7 +77,7 @@ def savetxt(file, S):
     np.savetxt(file, np.transpose(S))
 
 
-txt_alias = 'Run ls() to generate an alias dictionary of the txt files in the current position'
+txt_alias = 'Run set_alias() to generate an alias dictionary of the txt files in the current position'
 def set_alias():
     files = [j for j in os.listdir() if (j[-4:]=='.txt' and j[0:6]!='README')]
     global txt_alias
@@ -176,7 +176,6 @@ def plot(S, norm=True):
             plt.plot(s[0], s[1]/N, label=str(legend_num))
             legend_num += 1
     plt.legend()
-    plt.show(block=False)
 
 def replot(S, norm=True):
     S = type2spectra(S)
@@ -391,6 +390,93 @@ def search(S, shift=5, first=10, pre=False, verbose=True):
     return match
 
 
+###################################################################
+######################### Read files ##############################
+###################################################################
+
+
+#########   OMNIC FILES   #########
+
+def read_omnic_spa(filepath):
+    '''
+    Input
+    Read a file (string) *.spa
+    ----------
+    Output
+    Return spectra, wavelenght (nm), titles
+    '''
+    with open(filepath, 'rb') as f:
+        f.seek(564)
+        Spectrum_Pts = np.fromfile(f, np.int32,1)[0]
+        f.seek(30)
+        SpectraTitles = np.fromfile(f, np.uint8,255)
+        SpectraTitles = ''.join([chr(x) for x in SpectraTitles if x!=0])
+
+        f.seek(576)
+        Max_Wavenum=np.fromfile(f, np.single, 1)[0]
+        Min_Wavenum=np.fromfile(f, np.single, 1)[0]
+        # print(Min_Wavenum, Max_Wavenum, Spectrum_Pts)
+        Wavenumbers = np.flip(np.linspace(Min_Wavenum, Max_Wavenum, Spectrum_Pts))
+
+        f.seek(288);
+
+        Flag=0
+        while Flag != 3:
+            Flag = np.fromfile(f, np.uint16, 1)
+
+        DataPosition=np.fromfile(f,np.uint16, 1)
+        f.seek(DataPosition[0])
+
+        Spectra = np.fromfile(f, np.single, Spectrum_Pts)
+
+    # print information
+    print('INFO:')
+    print('    file name = ', filepath)
+    print('    Spectra title = ', SpectraTitles)
+    print('    from %f to %f, step = %f, # of channels = %d'%(Min_Wavenum, Max_Wavenum, Wavenumbers[1]-Wavenumbers[0], len(Wavenumbers)))
+    return np.array([Wavenumbers[::-1],Spectra[::-1]])
+
+
+def read_omnic_map(omnic_file):
+
+    omnic_file = OmnicMap.OmnicMap(omnic_file)
+
+    wn_min = omnic_file.info['OmnicInfo']['First X value']
+    wn_max = omnic_file.info['OmnicInfo']['Last X value']
+    wn_step = omnic_file.info['OmnicInfo']['Data spacing']
+    N_wn = omnic_file.nChannels
+    wn = np.arange(wn_min, wn_max+wn_step, wn_step)
+
+    N_X = omnic_file.info['Dim_1']
+    N_Y = omnic_file.info['Dim_2']
+    X_step = omnic_file.info['OmnicInfo']['Mapping stage X step size']
+    Y_step = omnic_file.info['OmnicInfo']['Mapping stage Y step size']
+
+    X = omnic_file.info['positioners']['X']
+    Y = omnic_file.info['positioners']['Y']
+
+    data = omnic_file.data
+
+    # generate MAP array
+    MAP = np.zeros((N_X,N_Y,2,N_wn))
+    MAP[:,:,0,:] = wn
+
+    for i in range(N_X):
+        for j in range(N_Y):
+            MAP[i,j,1,:] = data[i,j]
+
+    # print information about the map
+    print('INFO:')
+    print('    file name = ', omnic_file.info['SourceName'][0])
+    print('    %d x %d Raman map'%(N_X, N_Y))
+    print('    steps = %d um (x), %d um (y)'%(X_step, Y_step))
+    print('    from %f to %f, step = %f, # of channels = %d'%(wn_min, wn_max, wn_step, N_wn))
+    print('    absolute coordinates: X = [%f - %f]um, Y = [%f - %f]um'%(omnic_file.info['OmnicInfo']['First map location'][0], omnic_file.info['OmnicInfo']['Last map location'][0], omnic_file.info['OmnicInfo']['First map location'][1], omnic_file.info['OmnicInfo']['Last map location'][1]))
+    
+    return MAP
+
+
+
 
 ################################################################
 ######################## CLASSE SPECTRA ########################
@@ -421,7 +507,6 @@ class spectra:
         if self.info!='No uploaded info about this spectra. Save info in this variable':
             plt.title(self.info)
         plt.plot(self.S[0], self.S[1])
-        plt.show(block=False)
 
     def bkg_subtraction(self):
         self.BKG, self.S_nobkg = bkg_subtraction(self.S)

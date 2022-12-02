@@ -269,7 +269,7 @@ def bkg_subtraction(S, L_n=31, sigma=150, p=100, edge_width=5, edge_weight=5, pl
 ###################################################################
 
 
-def charge_lib(database='short'):
+def charge_lib(database):
     '''
     Available databases: short or full
     '''
@@ -282,7 +282,7 @@ def charge_lib(database='short'):
     lib_files = os.listdir(lib_path + '/' + database)
     lib_names = []
 
-    if database=='full':
+    if database=='RRUFF' or database=='RRUFF_sub':
         for file in lib_files:
             name=''
             n=0
@@ -305,6 +305,19 @@ def charge_lib(database='short'):
     print('Done. Good work!')
     return
 
+def upload_lib(up_lib):
+    '''
+    Upload a custom library
+    '''
+
+    global lib_names
+    global lib
+    
+    lib = up_lib
+    lib_names = list(lib.keys())
+    
+    return
+
 def lib(lib_name=None):
     if lib_name==None:
         return lib
@@ -314,19 +327,22 @@ def lib(lib_name=None):
 
 lib_alias= 'Run lib_names(...) to generate an alias dictionary of the library spectra in the current position'
 def lib_names(lib_name=None):
-    # ricerca delle iniziali
-    temp=[]
-    for i in lib_names:
-        if i[0:len(lib_name)]==lib_name:
-            temp.append(i)
+    if lib_name==None:
+        return lib_names
+    else:
+        # ricerca delle iniziali
+        temp=[]
+        for i in lib_names:
+            if i[0:len(lib_name)]==lib_name:
+                temp.append(i)
     
-    #genero tabella e alias
-    global lib_alias
-    lib_alias = ['lib'+str(j) for j in range(len(temp))]
-    lib_alias = dict(zip(lib_alias,temp))
+        #genero tabella e alias
+        global lib_alias
+        lib_alias = ['lib'+str(j) for j in range(len(temp))]
+        lib_alias = dict(zip(lib_alias,temp))
 
-    print(pd.DataFrame({'alias':lib_alias.keys(), 'name':lib_alias.values()}))
-    return
+        print(pd.DataFrame({'alias':lib_alias.keys(), 'name':lib_alias.values()}))
+        return
 
 
 def cos_sim(A,B):

@@ -6,7 +6,7 @@ import copy
 import pandas as pd
 import scipy
 
-from PyMca5.PyMcaIO import OmnicMap
+from .OmnicMap import OmnicMap
 
 from sklearn.linear_model import LinearRegression
 from itertools import combinations
@@ -21,8 +21,6 @@ from scipy.optimize import minimize
 ##################################################################
 module_path = os.path.dirname(__file__)
 lib_path = module_path+'/RamanLib'
-
-lib_files, lib_names, lib = (0,0,0)
 
 legend_num=0
 
@@ -271,7 +269,7 @@ def bkg_subtraction(S, L_n=31, sigma=150, p=100, edge_width=5, edge_weight=5, pl
 
 def charge_lib(database):
     '''
-    Available databases: short or full
+    Available databases: RRUFF, RRUFF_sub, short
     '''
 
     print('Charging pure spectra library, needs around a minute ....')
@@ -325,7 +323,6 @@ def lib(lib_name=None):
         return(lib[lib_name])
 
 
-lib_alias= 'Run lib_names(...) to generate an alias dictionary of the library spectra in the current position'
 def lib_names(lib_name=None):
     if lib_name==None:
         return lib_names
@@ -368,30 +365,12 @@ def cos_sim_w_shift(A,B,shift):
         match_shift.append(cos_sim(A,B_temp)) 
     return np.max(match_shift)
 
-def sigmoid(x,s=1):
-    return 1 / (1 + np.exp(-s*x))
 
-def preprocessing(P, pre=False):
-    if pre==True:
-        P[1] = np.where(P[1]>0, P[1], P[1]*0)
-
-        P[1] /= np.max(P[1])
-        #P[1] = sigmoid(P[1],10)-0.5
-        P[1]=P[1]**(2)
-    else:
-        P[1] = np.where(P[1]>0, P[1], P[1]*0)
-    return P
-
-
-sch_alias = 'Run search(...) to generate an alias dictionary of the library spectra in the current position'
-def search(S, shift=5, first=10, pre=False, verbose=True):
+def search(S, shift=5, first=10, verbose=True):
     S = interpol(S)
-    S =preprocessing(S,pre)
     match=[]
     for i in lib_names:
         B=lib[i].copy()
-        B = preprocessing(B,pre)
-
         match.append(cos_sim_w_shift(S,B,shift))        
 
     #genero tabella e alias
@@ -457,7 +436,7 @@ def read_omnic_spa(filepath):
 
 def read_omnic_map(omnic_file):
 
-    omnic_file = OmnicMap.OmnicMap(omnic_file)
+    omnic_file = OmnicMap(omnic_file)
 
     wn_min = omnic_file.info['OmnicInfo']['First X value']
     wn_max = omnic_file.info['OmnicInfo']['Last X value']
@@ -494,51 +473,47 @@ def read_omnic_map(omnic_file):
     return MAP
 
 
+file = 'data/Raman_maps/20221220/VML_106_0046.txt'
 
+def read_aramis_map(file):
+    wn = np.loadtxt(file, max_rows=1)
+    X = np.loadtxt(file, usecols=0, skiprows=1)
+    Y = np.loadtxt(file, usecols=1, skiprows=1)
+    I_cols = [i for i in range(2, 2+wn.shape[0])]
+    I = np.loadtxt(file, usecols=I_cols, skiprows=1)
 
-################################################################
-######################## CLASSE SPECTRA ########################
-################################################################
+    N_X = np.unique(X).shape[0]
+    N_Y = np.unique(Y).shape[0]
+    N_wn = wn.shape[0]
 
-# ferma ........
+    MAP = np.zeros((N_X, N_Y, 2, N_wn))
+    MAP_cord = np.zeros((N_X, N_Y, 2))
 
-class spectra:
+    for i in range(N_X):
+        for j in range(N_Y):
+            N = j + i*N_Y
+            S = np.array([wn,I[N]])
+            MAP[i,j] = S
+            MAP_cord[i,j] = [X[N], Y[N]]
 
-    def __init__(self, S):
-        
-            if type(S)==str:
-                self.info = S[:-4]
-                self.S = loadtxt(S)
-
-            elif type(S)==np.ndarray:
-                self.S = S
-                self.info = 'No uploaded info about this spectra. Save info in this variable'
-            elif type(S)==int:
-                S = [j for j in os.listdir() if (j[-4:]=='.txt' and j[0:6]!='README')][S]
-                self.info = S[:-4]
-                self.S = loadtxt(S)
-            else:
-                print('Type error!')
-
-    def plot(self):
-        _raman_labels()
-        if self.info!='No uploaded info about this spectra. Save info in this variable':
-            plt.title(self.info)
-        plt.plot(self.S[0], self.S[1])
-
-    def bkg_subtraction(self):
-        self.BKG, self.S_nobkg = bkg_subtraction(self.S)
-
-
-###################################################################
-######################## Initial functions ########################
-###################################################################
-
-print('Welcome to pyram: your Raman analysis library!')
-
-
-
-
+    # print information about the map
+    print('INFO:')
+    print('    file name = ', file)
+    print('    %d x %d Raman map'%(N_X, N_Y))
+    X_step = X[1]-X[0]
+    Y_step = Y[N_Y]-Y[0]
+    print('    steps = %d um (x), %d um (y)'%(X_step, Y_step))
+    wn_min = np.min(wn)
+    wn_max = np.max(wn)
+    wn_step = wn[1]-wn[0]
+    print('    from %f to %f, step = %f, # of channels = %d'%(wn_min, wn_max, wn_step, N_wn))
+    X_min = X[0]
+    X_max = X[-1]
+    Y_min = Y[0]
+    Y_max = Y[-1]
+    print('    absolute coordinates: X = [%f - %f]um, Y = [%f - %f]um'%(X_min, X_max, Y_min, Y_max))
+    
+    return MAP, MAP_cord
 
 
 ###################################################################
@@ -800,4 +775,142 @@ def NDsearch(S, shift, set_min=None, set_max=None, improvement_th = 0.1, fixed_N
 
     plt.legend()
 
+    return out.head(10).drop('ID',axis=1)
+
+
+
+
+###################################################################
+######################## BKG and MATCH FIT ########################
+###################################################################
+
+def bkg_match_fit(S, sigma, p, shift, method='gauss', nu_min=None, nu_max=None, delta=None, plot=True, verbose=True):
+    if delta==None:
+        delta = sigma
+
+    # normalize S
+    S[1] = S[1]/np.linalg.norm(S[1])
+
+    # resize S
+    if nu_min is not None:
+        S = S[:,S[0]>nu_min]
+    if nu_max is not None:
+        S = S[:,S[0]<nu_max]
+
+    # create matrix LIB
+
+    LIB = np.zeros((len(lib_names), len(S[0])))
+
+    for i in range(len(lib_names)):
+        P = np.copy(lib[lib_names[i]])
+
+        # restringo P se troppo grande
+        if P[0][0]<S[0][0] or P[0][-1]>S[0][-1]:
+            P = P[:,P[0]>=S[0][0]]
+            P = P[:,P[0]<=S[0][-1]]
+
+
+        # generate PAD with zeros of P se troppo piccolo
+        n_min = np.where(S[0]==P[0][0])
+        n_max = np.where(S[0]==P[0][-1])
+        
+        P_pad = np.copy(S)
+        P_pad[1][n_min[0][0]:n_max[0][0]+1] = P[1]
+        P_pad[1][0:n_min[0][0]] *= 0 
+        P_pad[1][n_max[0][0]:] *= 0
+
+        LIB[i] = P_pad[1]/(np.linalg.norm(P_pad[1]))  
+
+
+
+    # generate array of bkg template functions
+
+    # gaussian function in numpy
+    def gauss(x, mu, sigma):
+        return 1/np.sqrt(2*np.pi*sigma**2)*np.exp(-(x-mu)**2/(2*sigma**2))
+
+    # sinc function in numpy
+    def sinc(x, mu, sigma):
+        return np.sinc((x-mu)/sigma)
+
+
+    mus = np.linspace(S[0,0]-delta, S[0,-1]+delta, p)
+
+    G = np.zeros((p,len(S[0])))
+
+    if method == 'gauss':
+        for i in range(p):
+            G[i] = gauss(S[0], mus[i], sigma)
+
+    if method == 'sinc':
+        for i in range(p):
+            G[i] = sinc(S[0], mus[i], sigma)
+
+    # FIT with shifts
+
+    # cosine similarity between two vectors
+    def cosine_similarity(v1, v2):
+        return np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
+
+
+
+    shift_vec = np.arange(-shift,shift+1)
+    Ps = np.zeros((2*shift+1, len(S[0])))
+    out = []
+
+    for i in range(len(lib_names)):
+
+        for s in shift_vec:
+
+            P_shifted = np.roll(LIB[i],s)
+
+            if s>0:
+                P_shifted[:s] *= 0
+            if s<0:
+                P_shifted[s:] *= 0
+
+            Ps[s] = P_shifted
+
+        #### fit
+        Y = np.append(Ps, G, axis=0)
+        fit = scipy.linalg.lstsq(Y.transpose(), S[1])
+
+        
+        # salvo risultato
+        bkg = (G.transpose() * fit[0][2*shift+1:]).sum(axis=1)
+        I = fit[0][:2*shift+1]
+        P = (Ps.transpose() * I).sum(axis=1)
+
+        res = ((bkg+P-S[1])**2).sum()
+        
+        # riassumo info
+
+        match = cosine_similarity(S[1]-bkg, P)
+
+        # SALVO
+        out.append([lib_names[i], i, match, res, P, bkg, I.sum()])
+        
+    out = pd.DataFrame(out, columns=['name', 'ID', 'match', 'res', 'P', 'bkg','I']).sort_values(by='res', ascending=True).reset_index(drop=True)
+    out = out[out['I']>0]
+
+    if verbose:
+        display(out[['name','ID','match','res']].head(15))
+
+
+    # PLOTS
+    if plot:
+        plt.figure(figsize=(10,5))
+        plt.plot(S[0], S[1], label='signal')
+        plt.plot(S[0], out.P[0]+out.bkg[0], label=out.name[0])
+        plt.plot(S[0], out.bkg[0], label='background')
+        plt.xlabel(r'Raman shift [$cm^{-1}$]')
+        plt.ylabel('Intensity [a.u.]')
+
+        plt.figure(figsize=(10,5))
+        plt.plot(S[0], S[1]-out.bkg[0], label='signal')
+        plt.plot(S[0], out.P[0], label='fit')
+        plt.xlabel(r'Raman shift [$cm^{-1}$]')
+        plt.ylabel('Intensity [a.u.]')
+
+    
     return out.head(10).drop('ID',axis=1)
